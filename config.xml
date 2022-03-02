@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<module>
+	<name>cambiaserviciomrw</name>
+	<displayName><![CDATA[Cambia servico MRW]]></displayName>
+	<version><![CDATA[1.0.0]]></version>
+	<description><![CDATA[El módulo de MRW no permite asignar los servicios de forma automática dependiendo del destino. El módulo analizará cada nuevo order carrier y si el transportista es MRW asignará el servicio según el destino.]]></description>
+	<author><![CDATA[Sergio]]></author>
+	<tab><![CDATA[administration]]></tab>
+	<is_configurable>1</is_configurable>
+	<need_instance>1</need_instance>
+</module>
