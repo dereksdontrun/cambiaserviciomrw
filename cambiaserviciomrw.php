@@ -65,7 +65,8 @@ class Cambiaserviciomrw extends Module
 
         return parent::install() &&
             $this->registerHook('header') &&
-            $this->registerHook('backOfficeHeader');
+            $this->registerHook('backOfficeHeader') &&//hook que se llama después de la creación del objeto OrderCarrier
+            $this->registerHook('actionObjectOrderCarrierAddAfter');
     }
 
     public function uninstall()
@@ -136,10 +137,10 @@ class Cambiaserviciomrw extends Module
                 'input' => array(
                     array(
                         'type' => 'switch',
-                        'label' => $this->l('Live mode'),
+                        'label' => $this->l('Cambiar servicio MRW a los pedidos con destino Portugal. Bag 14 a España, Bag 19 a Portugal'),
                         'name' => 'CAMBIASERVICIOMRW_LIVE_MODE',
                         'is_bool' => true,
-                        'desc' => $this->l('Use this module in live mode'),
+                        'desc' => $this->l('Cambiar servicio'),
                         'values' => array(
                             array(
                                 'id' => 'active_on',
@@ -152,20 +153,7 @@ class Cambiaserviciomrw extends Module
                                 'label' => $this->l('Disabled')
                             )
                         ),
-                    ),
-                    array(
-                        'col' => 3,
-                        'type' => 'text',
-                        'prefix' => '<i class="icon icon-envelope"></i>',
-                        'desc' => $this->l('Enter a valid email address'),
-                        'name' => 'CAMBIASERVICIOMRW_ACCOUNT_EMAIL',
-                        'label' => $this->l('Email'),
-                    ),
-                    array(
-                        'type' => 'password',
-                        'name' => 'CAMBIASERVICIOMRW_ACCOUNT_PASSWORD',
-                        'label' => $this->l('Password'),
-                    ),
+                    ),                    
                 ),
                 'submit' => array(
                     'title' => $this->l('Save'),
@@ -180,9 +168,7 @@ class Cambiaserviciomrw extends Module
     protected function getConfigFormValues()
     {
         return array(
-            'CAMBIASERVICIOMRW_LIVE_MODE' => Configuration::get('CAMBIASERVICIOMRW_LIVE_MODE', true),
-            'CAMBIASERVICIOMRW_ACCOUNT_EMAIL' => Configuration::get('CAMBIASERVICIOMRW_ACCOUNT_EMAIL', 'contact@prestashop.com'),
-            'CAMBIASERVICIOMRW_ACCOUNT_PASSWORD' => Configuration::get('CAMBIASERVICIOMRW_ACCOUNT_PASSWORD', null),
+            'CAMBIASERVICIOMRW_LIVE_MODE' => Configuration::get('CAMBIASERVICIOMRW_LIVE_MODE'),            
         );
     }
 
@@ -212,9 +198,122 @@ class Cambiaserviciomrw extends Module
     /**
      * Add the CSS & JavaScript files you want to be added on the FO.
      */
-    public function hookHeader()
+    // public function hookHeader()
+    // {
+    //     $this->context->controller->addJS($this->_path.'/views/js/front.js');
+    //     $this->context->controller->addCSS($this->_path.'/views/css/front.css');
+    // }
+
+
+    // $params contiene el objeto orderCarrier en este caso, $params['object'], es decir, $params['object']->id sería el id de la tabla order_carrier
+    // tenemos que comprobar que el pedido tiene transportista MRW, si es así hay que comprobar el destino. El módulo está configurado con servicio Bag 14 por defecto, que queremos utilizar para España, de modo que si el destino es Portugal haremos el cambio a servicio Bag 19 
+    public function hookActionObjectOrderCarrierAddAfter($params) 
     {
-        $this->context->controller->addJS($this->_path.'/views/js/front.js');
-        $this->context->controller->addCSS($this->_path.'/views/css/front.css');
+        //Comprobamos la configuración del módulo, si está activo para el cambio de servicio
+        if (!Configuration::get('CAMBIASERVICIOMRW_LIVE_MODE')){
+            return;
+        }
+
+        //El hook funcionará cada vez que entra un nuevo pedido.
+        if ($params) {            
+
+            //sacamos el objeto order_carrier
+            $order_carrier = $params['object'];
+            if (Validate::isLoadedObject($order_carrier))
+            {       
+                //primero aseguramos de que el transportista es MRW. Obtenemos el id_carrier de MRW
+                $id_mrw = (int)Configuration::get('MRWCARRIER_CARRIER_ID_MRW');
+
+                //sacamos el id_carrier del pedido entrante
+                $id_carrier = (int)$order_carrier->id_carrier;     
+                
+                if ($id_mrw != $id_carrier) {
+                    //no es MRW
+                    return;
+                }
+
+                //es MRW, instanciamos order para obtener su dirección de entrega
+                $id_order = (int)$order_carrier->id_order;
+
+                $order = new Order($id_order);
+
+                if (!Validate::isLoadedObject($order)) {
+                    return;
+                }               
+
+                //sacamos el país de destino desde la dirección, nos interesa España, 6 o Portugal 15. En otros casos sería internacional etc, pero no hemos configurado los transportistas  más que para La Rioja , península y Portugal.
+                $id_address = $order->id_address_delivery;
+                //instanciamos dirección para sacar el id_country
+                $address = new Address($id_address);
+                if (!Validate::isLoadedObject($address)) {
+                    return;
+                }
+                $id_country = $address->id_country;
+
+                if ($id_country != 6 && $id_country != 15) {
+                    //no es España ni Portugal
+                    return;
+                }
+
+                //obtenemos servicio por defecto, que es el que tiene en este punto
+                $default_service = Configuration::get('MRWCARRIER_SERVICE_MRW');
+
+                //en este punto solo puede tenr destino España o Portugal
+                if ($id_country == 6) {
+                    //España, aseguramos que tenga servicio 0235
+                    if ($default_service == '0235') {
+                        //el servicio es el correcto
+                        return;
+                    } else {
+                        //tenemos que insertar el pedido en mrwcarrier_mrw. Sacamos el id de suscriptor para el servicio 0235
+                        $sql_id_subscriber = 'SELECT id_subscriber FROM lafrips_mrwcarrier_subs 
+                            WHERE service = "0235"
+                            AND environment = "mrw_pro"';
+                        if (!$id_subscriber = Db::getInstance()->getValue($sql_id_subscriber)) {
+                            //el servicio 0235 no está configurado
+                            return;
+                        }
+
+                        //insertamos el pedido en mrwcarrier_mrw asignándole 0235
+                        $sql_insert_mrwcarrier_mrw = "INSERT INTO lafrips_mrwcarrier_mrw
+                        (id_shop, order_id, `date`, cant, subscriber, `service`, saturday, agency, backReturn, mrw_warehouse, mrw_slot)
+                        VALUES 
+                        (1, $id_order, date('Y-m-d'), 1, '$id_subscriber', '0235', 0, 0, 0, 0, 0)";
+
+                        Db::getInstance()->Execute($sql_insert_mrwcarrier_mrw);
+
+                        return;
+                    }
+
+                } else {
+                    //Portugal, aseguramos servicio 0230
+                    if ($default_service == '0230') {
+                        //el servicio es el correcto
+                        return;
+                    } else {
+                        //tenemos que insertar el pedido en mrwcarrier_mrw. Sacamos el id de suscriptor para el servicio 0230
+                        $sql_id_subscriber = 'SELECT id_subscriber FROM lafrips_mrwcarrier_subs 
+                            WHERE service = "0230"
+                            AND environment = "mrw_pro"';
+                        if (!$id_subscriber = Db::getInstance()->getValue($sql_id_subscriber)) {
+                            //el servicio 0230 no está configurado
+                            return;
+                        }
+
+                        //insertamos el pedido en mrwcarrier_mrw asignándole 0235
+                        $sql_insert_mrwcarrier_mrw = "INSERT INTO lafrips_mrwcarrier_mrw
+                        (id_shop, order_id, `date`, cant, subscriber, `service`, saturday, agency, backReturn, mrw_warehouse, mrw_slot)
+                        VALUES 
+                        (1, $id_order, date('Y-m-d'), 1, '$id_subscriber', '0230', 0, 0, 0, 0, 0)";
+
+                        Db::getInstance()->Execute($sql_insert_mrwcarrier_mrw);
+
+                        return;
+                    }
+
+                }   
+             
+            }
+        }
     }
 }
