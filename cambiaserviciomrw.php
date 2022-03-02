@@ -47,7 +47,7 @@ class Cambiaserviciomrw extends Module
 
         parent::__construct();
 
-        $this->displayName = $this->l('Cambia servico MRW');
+        $this->displayName = $this->l('Cambia servicio MRW');
         $this->description = $this->l('El módulo de MRW no permite asignar los servicios de forma automática dependiendo del destino. El módulo analizará cada nuevo order carrier y si el transportista es MRW asignará el servicio según el destino.');
 
         $this->confirmUninstall = $this->l('¿Me vas a desinstalar?');
@@ -137,7 +137,7 @@ class Cambiaserviciomrw extends Module
                 'input' => array(
                     array(
                         'type' => 'switch',
-                        'label' => $this->l('Cambiar servicio MRW a los pedidos con destino Portugal. Bag 14 a España, Bag 19 a Portugal'),
+                        'label' => $this->l('Asignar servicio MRW correcto a los pedidos según destino. Bag 14 a España, Bag 19 a Portugal'),
                         'name' => 'CAMBIASERVICIOMRW_LIVE_MODE',
                         'is_bool' => true,
                         'desc' => $this->l('Cambiar servicio'),
@@ -274,11 +274,13 @@ class Cambiaserviciomrw extends Module
                             return;
                         }
 
+                        $date = date('Y-m-d');
+
                         //insertamos el pedido en mrwcarrier_mrw asignándole 0235
                         $sql_insert_mrwcarrier_mrw = "INSERT INTO lafrips_mrwcarrier_mrw
                         (id_shop, order_id, `date`, cant, subscriber, `service`, saturday, agency, backReturn, mrw_warehouse, mrw_slot)
                         VALUES 
-                        (1, $id_order, date('Y-m-d'), 1, '$id_subscriber', '0235', 0, 0, 0, 0, 0)";
+                        (1, $id_order, '$date', 1, '$id_subscriber', '0235', 0, 0, 0, 0, 0)";
 
                         Db::getInstance()->Execute($sql_insert_mrwcarrier_mrw);
 
@@ -300,11 +302,13 @@ class Cambiaserviciomrw extends Module
                             return;
                         }
 
+                        $date = date('Y-m-d');
+
                         //insertamos el pedido en mrwcarrier_mrw asignándole 0235
                         $sql_insert_mrwcarrier_mrw = "INSERT INTO lafrips_mrwcarrier_mrw
                         (id_shop, order_id, `date`, cant, subscriber, `service`, saturday, agency, backReturn, mrw_warehouse, mrw_slot)
                         VALUES 
-                        (1, $id_order, date('Y-m-d'), 1, '$id_subscriber', '0230', 0, 0, 0, 0, 0)";
+                        (1, $id_order, '$date', 1, '$id_subscriber', '0230', 0, 0, 0, 0, 0)";
 
                         Db::getInstance()->Execute($sql_insert_mrwcarrier_mrw);
 
